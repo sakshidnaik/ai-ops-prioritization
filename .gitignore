@@ -1,0 +1,6 @@
+.env
+__pycache__/
+*.pyc
+data/*_labeled*.csv
+data/*_scored*.csv
+.venv/

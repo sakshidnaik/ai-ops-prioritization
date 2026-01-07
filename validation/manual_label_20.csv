@@ -1,0 +1,604 @@
+ticket_id,system,title,description,llm_category,llm_severity,llm_time_sensitivity,priority_score,risk_level,manual_risk_level,manual_notes
+GH-59962,apache/airflow,Duplicate log entries observed with SambaHook/SmbSensor when Remote Logging is enabled,"### Apache Airflow Provider(s)
+
+samba
+
+### Versions of Apache Airflow Providers
+
+apache-airflow-providers-samba
+apache-airflow-providers-microsoft-azure
+
+### Apache Airflow version
+
+3.0.6
+
+### Operating System
+
+MacOS
+
+### Deployment
+
+Other Docker-based deployment
+
+### Deployment details
+
+_No response_
+
+### What happened
+
+When using the SambaHook (or sensors relying on it) in an environment where Remote Logging is enabled (e.g., S3, Azure Blob, GCS), log entries are duplicated.
+
+In observed cases, specific log lines are repeated multiple times. This behavior was successfully replicated in a local Breeze environment with remote logging configured.
+
+<img width=""3406"" height=""2076"" alt=""Image"" src=""https://github.com/user-attachments/assets/74be2f66-9aef-42ba-880d-64ca7abf900e"" />
+
+Key Observations:
+- Remote Logging Dependency: The duplication does not occur when Remote Logging is disabled (LocalExecutor writing to local files).
+- Delayed Duplication: The logs often appear correct initially. The duplication tends to manifest after the task has been running for a few minutes or when the remote logs are refreshed/uploaded.
+Initial Logs:
+
+<img width=""720"" height=""446"" alt=""Image"" src=""https://github.com/user-attachments/assets/29ff6f00-9e78-4621-91e0-76ea6f284e24"" />
+
+After a few minutes:
+
+<img width=""719"" height=""437"" alt=""Image"" src=""https://github.com/user-attachments/assets/affc0118-048a-4b4f-bc48-efd5f003250f"" />
+
+- Root Cause Suspect: It appears related to how the underlying smbprotocol library handles logging handlers in conjunction with Airflow's remote logging propagation.
+
+### What you think should happen instead
+
+Logs should appear once per emission, regardless of whether they are viewed locally or fetched from remote storage.
+
+<img width=""720"" height=""446"" alt=""Image"" src=""https://github.com/user-attachments/assets/a98152b8-4143-428c-a109-80db10ab4759"" />
+
+### How to reproduce
+
+1. Set up an Airflow environment (e.g., Breeze).
+2. Configure a Remote Logging backend (e.g., Azure Blob Storage or S3). Follow this [docs](https://airflow.apache.org/docs/apache-airflow-providers-microsoft-azure/stable/logging/index.html)
+      - `AIRFLOW__LOGGING__REMOTE_LOGGING`=True
+      - `AIRFLOW__LOGGING__REMOTE_BASE_LOG_FOLDER`=...
+5. Configure a Samba connection (ex: azure_smb_default).
+6. Trigger the following DAG which uses a TaskFlow sensor to check for files via SambaHook.
+
+Dag Code:
+```from airflow.decorators import dag, task
+from airflow.providers.samba.hooks.samba import SambaHook
+from airflow.sensors.base import PokeReturnValue
+from pendulum import datetime
+import logging
+
+@dag(
+    start_date=datetime(2025, 4, 1),
+    schedule=""@hourly"", 
+    catchup=False,
+    tags=[""reproduction"", ""samba"", ""logging""],
+)
+def azure_smb_logging_repro():
+
+    @task.sensor(
+        poke_interval=60,  
+        timeout=3600, 
+        mode=""reschedule"", 
+    )
+    def check_files_exist(
+        directory_path: str = ""/testshare"", samba_conn_id: str = ""azure_smb_default""
+    ) -> PokeReturnValue:
+        try:
+            with SambaHook(samba_conn_id=samba_conn_id) as samba_hook:
+                print(f""Checking for files in directory: {directory_path}"")
+
+                files = samba_hook.listdir(directory_path)
+
+                if files and len(files) > 0:
+                    print(f""✓ Files detected! Found {len(files)} items."")
+                    return PokeReturnValue(is_done=True)
+                else:
+                    print(f""✗ No files found in {directory_path}. Will retry..."")
+                    return PokeReturnValue(is_done=False)
+
+        except Exception as e:
+            print(f""Error while checking directory: {str(e)}"")
+            return PokeReturnValue(is_done=False)
+
+azure_smb_logging_repro()
+```
+
+### Anything else
+
+The issue was replicated in Breeze using the default remote logging configuration. It seems that the smbprotocol library might be attaching handlers to the root logger in a way that conflicts with how Airflow's remote logging handles log propagation, causing the same message to be processed by multiple handlers.
+
+### Are you willing to submit PR?
+
+- [ ] Yes I am willing to submit a PR!
+
+### Code of Conduct
+
+- [x] I agree to follow this project's [Code of Conduct](https://github.com/apache/airflow/blob/main/CODE_OF_CONDUCT.md)
+",Other,4,Low,58,Medium,Medium,duplicate logs
+GH-59907,apache/airflow,Add proper dependencies for sqlalchemy -  teradata,,Other,3,Low,36,Low,low,to add dependency
+GH-59757,apache/airflow,Duplicate http requests on loading dag details page,"### Apache Airflow version
+
+main (development)
+
+### If ""Other Airflow 3 version"" selected, which one?
+
+_No response_
+
+### What happened?
+
+On initial load `latestDagRunId` will be undefined and when the request to fetch it is complete `previousDagRunIdRef.current` which is empty string """" will not be equal to `latestDagRunId` causing the cache to be cleared and then http requests are again made though they fetch same data as the initial load. When `previousDagRunIdRef.current` is """" with `latestDagRunId` then it's better to set `previousDagRunIdRef.current` with `latestDagRunId` and then proceed with the loop to check for the latest run to clear them when there is a new run.
+
+https://github.com/apache/airflow/blob/f798302c4342e68e20d3ec6b7162123e1622c51d/airflow-core/src/airflow/ui/src/queries/useRefreshOnNewDagRuns.ts#L48
+
+### What you think should happen instead?
+
+_No response_
+
+### How to reproduce
+
+1. Go to a page with a dagrun like http://localhost:8000/dags/example_branch_labels
+2. Inspect the network tab. See duplicate requests for /ui and /api endpoints like `/ui/grid/runs`, `/ui/grid/structure` etc. though they are not necessary in the initial load
+
+### Operating System
+
+Ubuntu 20.04
+
+### Versions of Apache Airflow Providers
+
+_No response_
+
+### Deployment
+
+Other
+
+### Deployment details
+
+_No response_
+
+### Anything else?
+
+_No response_
+
+### Are you willing to submit PR?
+
+- [x] Yes I am willing to submit a PR!
+
+### Code of Conduct
+
+- [x] I agree to follow this project's [Code of Conduct](https://github.com/apache/airflow/blob/main/CODE_OF_CONDUCT.md)
+",Other,3,Low,36,Low,medium,duplicates requests
+GH-59901,apache/airflow,Add proper dependencies for sqlalchemy -  edge3,,Other,3,Low,36,Low,low,to add dependency
+GH-60017,apache/airflow,Fab User Management User Edit/Delete UI Glitches,"### Apache Airflow version
+
+3.1.5
+
+### If ""Other Airflow 3 version"" selected, which one?
+
+_No response_
+
+### What happened?
+
+While testing PR https://github.com/apache/airflow/pull/60015 for fixing Fab user management screens I noticed one further glitches in UI workflow:
+
+1) If you have a user created and you edit the user via the UI
+<img width=""551"" height=""159"" alt=""Image"" src=""https://github.com/user-attachments/assets/7dec9274-f956-4969-8792-a109183cc64f"" />
+...then on the screen where the user can be edited a ""Groups"" selection is displayed:
+<img width=""1048"" height=""316"" alt=""Image"" src=""https://github.com/user-attachments/assets/5eeedf12-ec09-4827-a6ca-c1b4941a24ee"" />
+...whereas Airflow does not use Groups and does not have them. There are also no Groups selectable. The UI element needs to be hidden
+
+### What you think should happen instead?
+
+Edit UI should be consistent
+
+### How to reproduce
+
+Start Airflow on main and follow the steps described via `breeze start-airflow --python 3.12 --load-example-dags --backend postgres --executor LocalExecutor --auth-manager FabAuthManager`
+
+### Operating System
+
+Linux
+
+### Versions of Apache Airflow Providers
+
+_No response_
+
+### Deployment
+
+Other
+
+### Deployment details
+
+breeze
+
+### Anything else?
+
+_No response_
+
+### Are you willing to submit PR?
+
+- [ ] Yes I am willing to submit a PR!
+
+### Code of Conduct
+
+- [x] I agree to follow this project's [Code of Conduct](https://github.com/apache/airflow/blob/main/CODE_OF_CONDUCT.md)
+",Access/Permissions,3,Low,42,Low,High,Ui glitches for edit and delete
+GH-59897,apache/airflow,Add proper dependencies for sqlalchemy -  drill,,Other,3,Low,36,Low,Low,to add dependency
+GH-59841,apache/airflow,Remove all sensitive export functionality from airflowctl,"### Body
+
+Make sure all export functionality for connections and variables is removed from airflowctl and replaced with explanation that export can only be available via local CLI.
+
+Make sure import is available.
+
+### Committer
+
+- [x] I acknowledge that I am a maintainer/committer of the Apache Airflow project.",Other,3,Low,36,Low,Medium,remove sensitive export functionality 
+GH-59840,apache/airflow,Remove export functionality from UI / Public API,"### Body
+
+Make sure all export functionality for connections and variables is removed from the UI and replaced with explanation that export can only be available via local CLI.
+Make sure import is available.
+
+### Committer
+
+- [x] I acknowledge that I am a maintainer/committer of the Apache Airflow project.",Other,3,Low,36,Low,medium,remove xport functionality 
+GH-59898,apache/airflow,Add proper dependencies for sqlalchemy -  impala,,Other,3,Low,36,Low,low,to add dependency
+GH-59860,apache/airflow,Never expose sensitive config values in UI,"### Body
+
+Currently the `expose config` allows deployment manager to expose also sensitive data - when set to True https://airflow.apache.org/docs/apache-airflow/stable/configurations-ref.html#expose-config. The `non-sensitive-only` value causes sensitive field masking.
+
+With the discussion mentioned in #59838 we agreed that we should **never** expose sensitive data over any  public API where UI user can authenticate (only via task-sdk API where tasks get dedicated JWT token)
+
+This means that:
+
+* Only `True/False` should be expected for expose-config and `True` means that sensitive fields are masked
+* We should add fallback -  when ""non-sensitive-data"" is set for the parameter it should be treated as `True` and deprecation warning should be raised
+* newsfragment should be added explaining the behaviour change
+
+### Committer
+
+- [x] I acknowledge that I am a maintainer/committer of the Apache Airflow project.",Access/Permissions,3,Low,42,Low,medium,sensitive config shared in UI 
+GH-59895,apache/airflow,Add proper dependencies for sqlalchemy - dependent providers,"Some of our providers have direct imports from sqlalchemy:
+
+
+The sqlalchemy dependency there is usualy for very small part of the functionality of those providers, so it should be ""Optional Provider Feature"" rather than being effectively ""mandatory"" dependency. This is not a problem today - but when we have task isolation in place, task-sdk will have no sqlalchemy as dependency, so those providers should have optional sqlalchemy extra + handling importing the hooks when sqlalchemy is not installed (i.e. either raising OptionalProviderFeatureException when used, and handling fallback to import errors when sqlalchemy import fails. 
+
+
+The way how it should be done:
+
+* for those providers that ""need"" sqlalchemy badly - sqlalchemy (same specification as in airflow-core now) should be added as ""required"" dependency
+
+* for those providers where sqlalchemy is just for some feature, we should make sure that they handle lack of sqlalchemy installed - handing import error, and raising ""Optional Provider Feature"" exception when a method that needs sqlalchemy is callsed and sqlalchemy is not installed. Sqlalchemy should be added as ""extra"" `sqlalchemy` dependency.
+
+",Other,4,Low,58,Medium,low,to add dependency
+GH-59963,apache/airflow,User creation in Fab fails when no role specified,"### Apache Airflow version
+
+3.1.5
+
+### If ""Other Airflow 3 version"" selected, which one?
+
+_No response_
+
+### What happened?
+
+While testing providers release on 2025-12-30 I noticed that when attempting to create a User in Fab and I miss to set the ""Role"" field I get a Ooops / HTTP 500 screen:
+
+<img width=""1152"" height=""1271"" alt=""Image"" src=""https://github.com/user-attachments/assets/0546ad5b-d3ab-4223-b5c3-9195cf273fbe"" />
+(see Role field is empty)
+
+<img width=""1170"" height=""472"" alt=""Image"" src=""https://github.com/user-attachments/assets/cdc5447c-a8c8-4a49-b37d-baebc8d0d481"" />
+
+If a Role is selected it is working.
+
+Stack trace from API Server:
+```
+2025-12-31T11:17:07.982595Z [error    ] Exception on /users/add [POST] [airflow.providers.fab.www.app] loc=app.py:1744
+Traceback (most recent call last):
+  File ""/usr/python/lib/python3.12/site-packages/flask/app.py"", line 2529, in wsgi_app
+    response = self.full_dispatch_request()
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File ""/usr/python/lib/python3.12/site-packages/flask/app.py"", line 1825, in full_dispatch_request
+    rv = self.handle_user_exception(e)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File ""/usr/python/lib/python3.12/site-packages/flask/app.py"", line 1823, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File ""/usr/python/lib/python3.12/site-packages/flask/app.py"", line 1799, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File ""/usr/python/lib/python3.12/site-packages/flask_appbuilder/security/decorators.py"", line 151, in wraps
+    return f(self, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File ""/usr/python/lib/python3.12/site-packages/flask_appbuilder/views.py"", line 237, in add
+    widget = self._add()
+             ^^^^^^^^^^^
+  File ""/usr/python/lib/python3.12/site-packages/flask_appbuilder/baseviews.py"", line 1241, in _add
+    if form.validate():
+       ^^^^^^^^^^^^^^^
+  File ""/usr/python/lib/python3.12/site-packages/wtforms/form.py"", line 330, in validate
+    return super().validate(extra)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File ""/usr/python/lib/python3.12/site-packages/wtforms/form.py"", line 147, in validate
+    if not field.validate(self, extra):
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File ""/usr/python/lib/python3.12/site-packages/wtforms/fields/core.py"", line 234, in validate
+    stop_validation = self._run_validation_chain(form, chain)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File ""/usr/python/lib/python3.12/site-packages/wtforms/fields/core.py"", line 254, in _run_validation_chain
+    validator(form, self)
+  File ""/usr/python/lib/python3.12/site-packages/flask_appbuilder/security/forms.py"", line 25, in roles_or_groups_required
+    if not form[""roles""].data and not form[""groups""].data:
+                                      ~~~~^^^^^^^^^^
+  File ""/usr/python/lib/python3.12/site-packages/wtforms/form.py"", line 64, in __getitem__
+    return self._fields[name]
+           ~~~~~~~~~~~~^^^^^^
+KeyError: 'groups'
+```
+
+### What you think should happen instead?
+
+Same like in Fab as released with Airflow 3.1.5 there should be a validation error generated, not a HTTP 500:
+
+<img width=""784"" height=""156"" alt=""Image"" src=""https://github.com/user-attachments/assets/d48ec8c6-966e-4ad0-8d75-09db24854317"" />
+
+### How to reproduce
+
+Use Fab apache-airflow-providers-fab==3.1.1rc1 or start on latest main via `breeze start-airflow --python 3.12 --load-example-dags --backend postgres --executor LocalExecutor --answer y --auth-manager FabAuthManager`
+
+Log in as admin and go to Security->Users, add a user and miss-out to fill the ""Roles"" field.
+
+### Operating System
+
+Linux
+
+### Versions of Apache Airflow Providers
+
+Fab 3.1.1rc1 or latest main
+
+### Deployment
+
+Other
+
+### Deployment details
+
+_No response_
+
+### Anything else?
+
+_No response_
+
+### Are you willing to submit PR?
+
+- [ ] Yes I am willing to submit a PR!
+
+### Code of Conduct
+
+- [x] I agree to follow this project's [Code of Conduct](https://github.com/apache/airflow/blob/main/CODE_OF_CONDUCT.md)
+",Access/Permissions,4,Low,82,High,high,"user is not created, when role is not specified, give option for other. "
+GH-59929,apache/airflow,UI E2E Test || ASSET-001: Verify Assets List Displays,"## Description
+
+Add E2E tests to verify the Assets list page (`/assets`) displays correctly.
+
+<img width=""1718"" height=""852"" alt=""Image"" src=""https://github.com/user-attachments/assets/b526998d-3c07-400f-9cc2-d16958ce782b"" />
+
+## What to Test
+
+- Navigate to the Assets page (`/assets`)
+- Verify the assets list/table is displayed
+- Verify asset names and URIs are shown correctly
+- Verify pagination works 
+- Verify search/filter functionality works
+
+## Acceptance Criteria
+
+- [ ] Assets page loads successfully
+- [ ] Assets list displays with correct data
+- [ ] Pagination works correctly
+- [ ] Search/filter returns expected results
+- [ ] All tests pass on Chromium, Firefox, and WebKit
+
+
+### Related issues
+
+https://github.com/apache/airflow/issues/59028
+
+### Are you willing to submit a PR?
+
+- [ ] Yes I am willing to submit a PR!
+
+### Code of Conduct
+
+- [x] I agree to follow this project's [Code of Conduct](https://github.com/apache/airflow/blob/main/CODE_OF_CONDUCT.md)
+",Other,3,Low,36,Low,low,verify
+GH-59821,apache/airflow,"Review frontend/UI build manifests (package.json, package-lock.json) present in production Python images?","
+### Discussed in https://github.com/apache/airflow/discussions/59820
+
+<div type='discussions-op-text'>
+
+<sup>Originally posted by **ronak-sirwani** December 26, 2025</sup>
+Context:
+I recently scanned our Airflow 3.0.6 deployment (using the official apache/airflow:slim-3.0.6-python3.12 image) and encountered a critical severity vulnerability flagged by Snyk in form-data@4.0.1.
+
+The Finding:
+The scanner pointed to this path:
+/home/airflow/.local/lib/python3.12/site-packages/airflow/api_fastapi/auth/managers/simple/ui/package.json
+
+Upon investigation inside the image, I found:
+- airlfow UI build Manifests: A package.json and package-lock.json (pinning the vulnerable form-data@4.0.1) exist in this directory.
+- No Code: The node_modules directory is correctly stripped, so the vulnerable code itself is missing.
+- Conflicting Lockfiles: A pnpm-lock.yaml is also present, which pins the safe version 4.0.4.
+
+I noticed that while the 'main' branch has updated package-lock.json to the secure form-data version, the underlying issue remains: why do we ship these files at all? I've little knowledge of the frontend build, but from a runtime perspective, these manifests appear to be ""ghost"" artifacts. Since node_modules are stripped and the UI is pre-compiled, keeping these files in the production image—even if patched—leaves the door open for future false positives whenever a frontend dependency (that isn't even installed) gets flagged.
+
+I am currently planning to patch our internal Docker builds by deleting package.json and package-lock.json to satisfy our security scanners, but I want to make sure I’m not breaking anything critical.
+Is there any specific runtime reason why these files must remain in the production image? Any insights or validation would be greatly appreciated!</div>",Data Quality Fix,3,Low,64,Medium,low,review
+GH-59949,apache/airflow,"Missing test coverage for date range picker edge cases (dates, times, boundaries)","### Apache Airflow version
+
+3.1.5
+
+### If ""Other Airflow 3 version"" selected, which one?
+
+_No response_
+
+### What happened?
+
+The date range picker currently exhibits inconsistent behavior when handling edge cases such as invalid dates, invalid times, boundary transitions, and partial date ranges. Some scenarios are not validated correctly, while others lack explicit assertions, making failures harder to detect and debug.
+Additionally, certain user interactions (e.g., partial ranges, removal actions, or invalid inputs) are not covered by existing tests, which can allow regressions to go unnoticed.
+
+### What you think should happen instead?
+
+The date range picker should:
+Validate invalid dates and times consistently (e.g., invalid months, days, and time values)
+Correctly handle boundary cases such as leap years and month/year transitions
+Support partial ranges (only start or only end) with predictable behavior
+Trigger callbacks (onChange, onRemove) only when inputs are valid
+Clear validation errors appropriately when inputs are corrected
+Test coverage should explicitly assert these behaviors to ensure long-term correctness and maintainability.
+
+### How to reproduce
+
+How to reproduce
+Open the date range picker component
+Enter invalid date or time values (e.g., month 13, day 32, time 25:00)
+Try boundary cases (e.g., Feb 29 on non-leap year, start date after end date)
+Provide partial inputs (only start date or only end date)
+Observe inconsistent validation behavior or lack of clear feedback
+
+### Operating System
+
+macOS (Apple Silicon / Intel)
+
+### Versions of Apache Airflow Providers
+
+_No response_
+
+### Deployment
+
+Official Apache Airflow Helm Chart
+
+### Deployment details
+
+_No response_
+
+### Anything else?
+
+_No response_
+
+### Are you willing to submit PR?
+
+- [x] Yes I am willing to submit a PR!
+
+### Code of Conduct
+
+- [x] I agree to follow this project's [Code of Conduct](https://github.com/apache/airflow/blob/main/CODE_OF_CONDUCT.md)
+",Data Quality Fix,4,Low,86,High,medium,missing test coverage
+GH-59965,apache/airflow,Incorrect log and task instance join query based on task_id in eventLogs API,"### Apache Airflow version
+
+main (development)
+
+### If ""Other Airflow 3 version"" selected, which one?
+
+_No response_
+
+### What happened?
+
+The audit log page has been very slow in our environment. There are a lot of generated dags with same task_id present in different dags. Upon loading the events for a dag we noted that join for task instance is made on TaskInstance.task_id which results in incorrect join where events related to other task instances of same id are also returned. The query generated is as below where `LEFT OUTER JOIN (task_instance` based on task_id seems to be problematic. The default behavior should be fixed. The query is also loading everything though dag_id and task_display_name are the only required fields which can be improved.
+
+https://github.com/apache/airflow/blob/98d59763242fac3fe79561967f226bfb3cfacfdf/airflow-core/src/airflow/models/log.py#L60-L66
+
+```sql
+SELECT log.id, log.dttm, log.dag_id, log.task_id, log.map_index, log.event, log.logical_date, log.run_id, 
+log.owner, log.owner_display_name, log.extra, log.try_number, dag_1.dag_display_name, dag_1.deadline, 
+dag_1.dag_id AS dag_id_1, dag_1.is_paused, dag_1.is_stale, dag_1.last_parsed_time, 
+dag_1.last_parse_duration, dag_1.last_expired, dag_1.fileloc, dag_1.relative_fileloc, dag_1.bundle_name, dag_1.bundle_version, dag_1.owners, dag_1.description, dag_1.timetable_summary, dag_1.timetable_description, dag_1.asset_expression, dag_1.max_active_tasks, dag_1.max_active_runs, dag_1.max_consecutive_failed_dag_runs, dag_1.has_task_concurrency_limits, dag_1.has_import_errors, dag_1.fail_fast, dag_1.next_dagrun, dag_1.next_dagrun_data_interval_start, dag_1.next_dagrun_data_interval_end, dag_1.next_dagrun_create_after, task_instance_1.rendered_map_index, task_instance_1.task_display_name, dag_run_1.state, dag_run_1.id AS id_1, dag_run_1.dag_id AS dag_id_2, dag_run_1.queued_at, dag_run_1.logical_date AS logical_date_1, dag_run_1.start_date, dag_run_1.end_date, dag_run_1.run_id AS run_id_1, dag_run_1.creating_job_id, dag_run_1.run_type, dag_run_1.triggered_by, dag_run_1.triggering_user_name, dag_run_1.conf, dag_run_1.data_interval_start, dag_run_1.data_interval_end, dag_run_1.run_after, dag_run_1.last_scheduling_decision, dag_run_1.log_template_id, dag_run_1.updated_at, dag_run_1.clear_number, dag_run_1.backfill_id, dag_run_1.bundle_version AS bundle_version_1, dag_run_1.scheduled_by_job_id, dag_run_1.context_carrier, dag_run_1.span_status, dag_run_1.created_dag_version_id, dag_run_1.partition_key, task_instance_1.id AS id_2, task_instance_1.task_id AS task_id_1, task_instance_1.dag_id AS dag_id_3, task_instance_1.run_id AS run_id_2, task_instance_1.map_index AS map_index_1, task_instance_1.start_date AS start_date_1, task_instance_1.end_date AS end_date_1, task_instance_1.duration, task_instance_1.state AS state_1, task_instance_1.try_number AS try_number_1, task_instance_1.max_tries, task_instance_1.hostname, task_instance_1.unixname, task_instance_1.pool, task_instance_1.pool_slots, task_instance_1.queue, task_instance_1.priority_weight, task_instance_1.operator, task_instance_1.custom_operator_name, task_instance_1.queued_dttm, task_instance_1.scheduled_dttm, task_instance_1.queued_by_job_id, task_instance_1.last_heartbeat_at, task_instance_1.pid, task_instance_1.executor, task_instance_1.executor_config, task_instance_1.updated_at AS updated_at_1, task_instance_1.context_carrier AS context_carrier_1, task_instance_1.span_status AS span_status_1, task_instance_1.external_executor_id, task_instance_1.trigger_id, task_instance_1.trigger_timeout, task_instance_1.next_method, task_instance_1.next_kwargs, task_instance_1.dag_version_id 
+FROM log LEFT OUTER JOIN dag AS dag_1 ON log.dag_id = dag_1.dag_id LEFT OUTER JOIN (task_instance AS task_instance_1 JOIN dag_run AS dag_run_1 ON dag_run_1.dag_id = task_instance_1.dag_id AND dag_run_1.run_id = task_instance_1.run_id) ON log.task_id = task_instance_1.task_id 
+WHERE log.dag_id = ? AND log.task_id = ? AND log.run_id = ? ORDER BY log.dttm DESC, log.id DESC
+ LIMIT ? OFFSET ?
+
+```
+
+### What you think should happen instead?
+
+_No response_
+
+### How to reproduce
+
+1. Parse and let the below dags complete 3 runs each.
+2. Go to audit log tab and check the events.
+3. Mark the task instance as failed and reload the page.
+
+```python
+from datetime import datetime, timedelta
+
+from airflow import DAG
+from airflow.decorators import task
+
+
+with DAG(
+    dag_id=""log_query_1"",
+    start_date=datetime(2025, 1, 1),
+    end_date=datetime(2025, 1, 3),
+    catchup=True,
+    schedule=""@daily"",
+) as dag:
+
+    @task
+    def start():
+        import time
+        time.sleep(1)
+
+    start()
+
+
+with DAG(
+    dag_id=""log_query_2"",
+    start_date=datetime(2025, 1, 1),
+    end_date=datetime(2025, 1, 3),
+    catchup=True,
+    schedule=""@daily"",
+) as dag:
+
+    @task
+    def start():
+        import time
+        time.sleep(1)
+
+    start()
+```
+
+### Operating System
+
+Ubuntu 20.04
+
+### Versions of Apache Airflow Providers
+
+_No response_
+
+### Deployment
+
+Virtualenv installation
+
+### Deployment details
+
+_No response_
+
+### Anything else?
+
+_No response_
+
+### Are you willing to submit PR?
+
+- [ ] Yes I am willing to submit a PR!
+
+### Code of Conduct
+
+- [x] I agree to follow this project's [Code of Conduct](https://github.com/apache/airflow/blob/main/CODE_OF_CONDUCT.md)
+",Data Quality Fix,4,Low,68,Medium,high,incorrect log and tak instance 
+GH-59904,apache/airflow,Add proper dependencies for sqlalchemy -  openlineage,,Other,3,Low,36,Low,low,to add dependency
+GH-59900,apache/airflow,Add proper dependencies for sqlalchemy -  databricks,,Other,3,Low,36,Low,low,to add dependency
+GH-59899,apache/airflow,Add proper dependencies for sqlalchemy -  common.sql,,Other,3,Low,36,Low,low,to add dependency
+GH-59839,apache/airflow,Update Security model documentation to explain our approach for sensitive data exposure over API,"### Body
+
+We should update the security model to explain the policy around exposing the sensitive data.
+
+### Committer
+
+- [x] I acknowledge that I am a maintainer/committer of the Apache Airflow project.",Other,3,Low,54,Low,medium,update security doc. 
