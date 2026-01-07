@@ -1,150 +1,137 @@
-# Operational Risk Prioritization for Ops Backlogs
+# AI Ops Prioritization & Risk Scoring System
 
-A hybrid AI + heuristic system to prioritize operational issues by business risk using real GitHub issue data.  
-Designed to be explainable, reliable under constraints, and suitable for real-world operations teams.
-
----
-
-## Overview
-
-Operations teams often manage large backlogs of issues without a consistent way to determine which items pose the highest operational risk. Manual triage is time-consuming, subjective, and does not scale.
-
-This project demonstrates an end-to-end **operational risk prioritization system** that:
-- Classifies issues into operational categories
-- Assigns severity and time sensitivity
-- Computes an explainable priority score
-- Surfaces high-risk issues through an interactive dashboard
-
-The system is designed with real-world constraints in mind, including API rate limits, cost considerations, and the need for transparency in decision-making.
+A portfolio project that demonstrates how unstructured operational issues
+(GitHub issues) can be converted into a prioritized, risk-aware backlog
+using analytics logic and AI-style classification.
 
 ---
 
-## Problem Statement
+## Business Problem
 
-In high-volume operational environments, critical issues such as outages or data risks can be buried among low-impact tasks like UI tweaks or documentation updates.
+Operations teams receive hundreds of issues, tickets, and requests.
+All of them look “important”, but teams must decide:
 
-Without a structured prioritization framework:
-- High-risk issues may not receive timely attention
-- Decision-making becomes inconsistent across analysts
-- Operational reliability is negatively impacted
+**Which issues should be handled first — and why?**
 
-The goal of this project is to support **faster, safer, and more consistent triage decisions**.
-
----
-
-## Dataset
-
-- **Source:** Public GitHub Issues from the Apache Airflow repository
-- **Why GitHub Issues:**  
-  GitHub issue trackers closely resemble real operational backlogs, containing bug reports, incidents, enhancements, and maintenance tasks written by real users and engineers.
-- **Dataset Size:**  
-  - 50 issues for system demonstration  
-  - 20 randomly sampled issues for manual validation
-
-Using public data ensures transparency and avoids reliance on synthetic examples.
+This project simulates a real Ops / Analytics workflow:
+- Raw issues → structured signals
+- Signals → priority score
+- Priority → executive-friendly dashboard
 
 ---
 
-## Approach
+## What This Project Does
 
-The system follows a simple, explainable pipeline:
+1. **Ingests real GitHub issues** from a public repository  
+2. **Classifies issues** into operational categories  
+3. **Assigns severity & urgency** using rule-based logic (LLM-ready design)  
+4. **Calculates a priority score & risk level**  
+5. **Visualizes results** in an interactive Streamlit dashboard  
+
+---
+
+## Tech Stack
+
+- Python
+- Pandas
+- Streamlit
+- GitHub Issues API
+- Heuristic / AI-style labeling logic
+- CSV-based analytics pipeline
+
+> Note: Heuristic labeling is used instead of live LLM calls due to API rate limits.
+> The code is structured so LLM-based classification can be plugged in easily.
+
+---
+
+## Project Flow
 
 GitHub Issues
 ↓
-Heuristic Labeling (category, severity, time sensitivity)
+Data Cleaning
 ↓
-Risk Scoring Logic (weighted, explainable rules)
+Issue Classification
 ↓
-Prioritized Backlog
+Risk & Priority Scoring
 ↓
-Streamlit Dashboard
+Interactive Dashboard
 
+ ---
 
-Each step is designed to be interpretable and adjustable based on operational needs.
+## Dashboard Preview
 
----
-
-## Why Hybrid (AI + Heuristics)
-
-Large Language Models (LLMs) can be useful for classification but introduce challenges in production environments:
-- API rate limits
-- Cost at scale
-- Reduced transparency
-
-This system is intentionally designed as **hybrid**:
-- Heuristics provide reliability, explainability, and low cost
-- LLM-based labeling can be enabled selectively for ambiguous cases
-- The system continues functioning even when external services are unavailable
-
-This tradeoff prioritizes operational stability over model sophistication.
-
----
-
-## Validation
-
-To validate the prioritization logic, 20 issues were randomly sampled and manually reviewed to simulate analyst triage.
-
-**Validation results:**
-- ~50% alignment between system-generated and manual risk levels
-- No critical outage or failure issues were incorrectly classified as Low risk
-- Most mismatches occurred between Medium vs Low risk judgments on UI, documentation, or cleanup tasks
-
-This indicates the system is **directionally correct and conservative**, favoring safety over under-prioritization.
-
----
-
-## Dashboard
-
-The Streamlit dashboard allows users to:
-- Filter issues by category, risk level, and priority score
-- Quickly identify top high-risk issues
-- Inspect individual issues with full explainability
-
-### Dashboard Overview
+### Overview
 ![Dashboard Overview](assets/dashboard_overview.png)
 
 ### Top High-Risk Issues
-![Top High Risk Issues](assets/top_risk_issues.png)
+![Top Risk Issues](assets/top_risk_issues.png)
 
-### Issue Details & Explainability
-![Issue Details](assets/issue_details.png)
-
----
-
-## Business Impact
-
-This system helps operations teams:
-- Reduce time spent on manual triage
-- Consistently surface high-risk issues
-- Improve transparency in prioritization decisions
-- Support faster response to operational risks
-
-The output is advisory and designed to complement, not replace, human judgment.
+### Issue Details View
+![Issue Details](assets/issues_details.png)
 
 ---
 
-## Limitations & Next Steps
+## Key Outputs
 
-**Current limitations:**
-- Heuristic rules may underweight UI or documentation-related risks
-- Risk prioritization remains subjective by nature
-- Dataset size is intentionally limited for demonstration
+Each issue is enriched with:
 
-**Future improvements:**
-- Tune heuristics using analyst feedback
-- Add human override workflows
-- Selectively re-enable LLM-based labeling for ambiguous cases
-- Expand dataset size for broader evaluation
+- `llm_category` – type of operational issue
+- `llm_severity` – impact level (1–5)
+- `llm_time_sensitivity` – Low / Medium / High
+- `priority_score` – numeric ranking (0–100)
+- `risk_level` – High / Medium / Low
+- `llm_reason` – explainable justification
 
 ---
 
-## How to Run
+## Validation (Manual QA)
 
-```bash
-pip install -r requirements.txt
-python src/fetch_github_issues.py
-python src/heuristic_labeler.py
-python src/risk_scoring.py
-streamlit run app.py
+To validate the model logic:
+
+- 20 issues were manually labeled with a **risk level**
+- Compared against model output
+
+**Results**
+- Matches: 10 / 20
+- Match rate: **50%**
+
+This is expected because:
+- Risk perception varies by organization
+- No SLA / revenue / customer-impact data was available
+- Rules are intentionally simple and explainable
+
+---
+
+## What This Demonstrates (for Recruiters)
+
+- Translating unstructured text into analytics-ready data
+- Prioritization logic, not just dashboards
+- Explainable scoring instead of black-box AI
+- End-to-end ownership: data → logic → validation → UI
+
+---
+
+## Repository Structure
+.
+├── app.py # Streamlit dashboard
+├── assets/ # Dashboard screenshots
+├── data/ # Raw, labeled, and scored CSVs
+├── src/
+│ ├── fetch_github_issues.py
+│ ├── heuristic_labeler.py
+│ ├── risk_scoring.py
+│ └── test_openai_call.py
+├── requirements.txt
+└── README.md
+
+
+---
+
+## How This Can Be Extended
+
+- Replace heuristic rules with LLM-based classification
+- Train a lightweight ML classifier using labeled data
+- Add business signals (SLA breach, issue age, comments)
+- Deploy dashboard publicly
 
 
