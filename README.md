@@ -117,10 +117,10 @@ This is expected because:
 - assets/ # Dashboard screenshots
 - data/ # Raw, labeled, and scored CSVs
 - src/
- - fetch_github_issues.py
- - heuristic_labeler.py
- - risk_scoring.py
- - test_openai_call.py
+  - fetch_github_issues.py
+  - heuristic_labeler.py
+  - risk_scoring.py
+  - test_openai_call.py
 - requirements.txt
 - README.md
 
